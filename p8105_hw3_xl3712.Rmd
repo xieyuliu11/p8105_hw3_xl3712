@@ -4,12 +4,15 @@ author: "Xieyu Liu"
 date: "2026-10-12"
 output: github_document
 ---
-
-# Problem1
 ```{r}
 library(tidyverse)
 library(p8105.datasets)
 library(patchwork)
+library(ggplot2)
+```
+
+# Problem1
+```{r}
 data("ny_noaa")
 ```
 
@@ -180,9 +183,14 @@ sex_education_table = nhanes|>
     Women = female
   )|>
   mutate(Total = Men + Women)
+
+sex_education_table |>
+  knitr::kable(
+    caption = "Number of participants by education level and sex"
+  )
 ```
 
-The number of men and women are similar in less than high school and more than high school groups. In the high school equivalent group, there are more men (n=35) than women (n-23).
+The number of men and women are similar in less than high school and more than high school groups. In the high school equivalent group, there are more men (n=35) than women (n=23).
 
 ```{r}
 nhanes|>
@@ -268,3 +276,121 @@ Across all three education groups, mean activity followed a similar daily patter
 Sex differences varied across education levels. Among participants with less than a high school education, men had slightly higher mean activity during the nighttime and early-morning hours, whereas women showed a somewhat higher peak in late morning. In the high school equivalent group, women generally had higher mean activity than men from the morning through early afternoon, although the two curves became more similar later in the day. In the more than high school group, women had consistently higher mean activity than men for most daytime hours.
 
 Overall, the figure suggests that daily activity patterns are similar in timing across education groups, but the magnitude of activity and the difference between men and women may vary by education level.
+
+## Problem 3
+
+```{r}
+jan_2020 = read_csv("data/Jan 2020 Citi.csv")
+jan_2024 = read_csv("data/Jan 2024 Citi.csv")
+july_2020 = read_csv("data/July 2020 Citi.csv")
+july_2024 = read_csv("data/July 2024 Citi.csv")
+
+jan_2020 = jan_2020|>
+  mutate(year = 2020, month = 1)
+
+jan_2024 = jan_2024|>
+  mutate(year = 2024, month = 1)
+
+july_2020 = july_2020|>
+  mutate(year = 2020, month = 7)
+
+july_2024 = july_2024|>
+  mutate(year = 2024, month = 7)
+
+citibike_df = bind_rows(jan_2020,
+                        july_2020,
+                        jan_2024,
+                        july_2024)
+```
+
+The four datasets were combined into a single dataset containing 99485 observations and 9 variables. The variables include ride id, rideable type, weekdays, duration, start station name, end station name, member casual, year and month.
+
+
+```{r}
+rides_table = citibike_df|>
+  group_by(year, month, member_casual)|>
+  summarise(
+    n_rides = n(),
+    .groups = "drop"
+  )|>
+  pivot_wider(
+    names_from = member_casual,
+    values_from = n_rides,
+    values_fill = 0
+  )|>
+  arrange(year, month)
+
+rides_table |>
+  knitr::kable(
+    col.names = c("Year", "Month", "Casual Riders", "Members"),
+    caption = "Number of Citi Bike Rides by Year, Month, and Membership Status"
+  )
+```
+
+Members accounted for more rides than causal riders in all four year-month combinations. In 2020, the number of rides was higher in July than in January for both casual riders and members. The same pattern was observed in 2024. Ride counts were also higher in both January and July in 2021 than in the corresponding months in 2020.
+
+
+```{r}
+top_station_202407 = citibike_df|>
+  filter(year == 2024, month == 7, !is.na(start_station_name))|>
+  count(start_station_name, name = "n_rides", sort = T)|>
+  slice_head(n=5)
+
+top_station_202407 |>
+  knitr::kable(
+    col.names = c("Starting Station", "Number of Rides"),
+    caption = "Top 5 Starting Stations in July 2024"
+  )
+```
+
+Pier 61 at Chelsea Piers was the most popular starting station in July 2024, with 163 rides in the dataset. W 31 St & 7 Ave ranked fifth, with 146 rides.
+
+
+```{r}
+median_duration_df = citibike_df|>
+  group_by(year, month, weekdays)|>
+  summarise(
+    median_duration = median(duration, na.rm = T),
+    .groups = "drop"
+  )|>
+  mutate(
+    weekdays = factor(
+      weekdays,
+      levels = c("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday", "Sunday")
+    )
+  )
+
+ggplot(median_duration_df,
+       aes(x=weekdays, y=median_duration, color=factor(month), group=month))+
+  geom_line(linewidth = 0.8)+
+  geom_point(size=2)+
+  facet_wrap(~year)+
+  labs(
+    title = "Median ride duration by day of week, month, and year",
+    x = "Day of week",
+    y = "Median ride duration (minutes)",
+    color = "Month"
+  )+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Median ride duration varied by day of the week, month, and year. In both 2020 and 2024, median ride duration was higher in July than in January. Ride durations also tended to be longer on weekends, particularly in 2020, although the pattern varied by year and month. Additionally, median ride duration was higher in 2020 than in 2024 for both month.
+
+
+```{r}
+citibike_df |>
+  filter(year == 2024)|>
+  ggplot(aes(x=member_casual,y=duration,fill=rideable_type))+
+  geom_boxplot(outlier.alpha = 0.2)+
+  facet_wrap(~month, labeller = labeller(month = c("1" = "January", "7" = "July")))+
+  labs(
+    title = "Ride duration by month, membership status, and bike type in 2024",
+    x = "Membership status",
+    y = "Ride duration (minutes)",
+    fill = "Bike type"
+  )+
+  theme_minimal()
+```
+
+Median ride duration was generally higher in July than in January across membership statuses and bike types, although the differences varied between groups. Casual riders generally had longer median ride durations and greater variability than members. Classic bikes tended to have higher median ride durations than electric bikes, particularly among casual riders. The distributions were right-skewed, with many unusually long rides.
